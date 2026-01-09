@@ -1,3 +1,28 @@
+---
+title: PP-OCRv5 Online Demo
+emoji: 🌍
+colorFrom: purple
+colorTo: green
+sdk: gradio
+sdk_version: 5.30.0
+app_file: app.py
+pinned: false
+license: apache-2.0
+short_description: Universal-Scene Text Recognition Model with High-Accuracy
+tags:
+  - ocr
+  - paddleocr
+  - computer-vision
+  - image-to-text
+  - gradio
+  - DEEPX
+  - NPU
+---
+
+This project is reconstructed based on [https://huggingface.co/docs/hub/spaces-config-reference](https://huggingface.co/docs/hub/spaces-config-reference) by integrating the DEEPX DX-M1 NPU SDK.
+
+---
+
 # PP-OCRv5 Online Demo - DEEPX Edition
 
 A web-based OCR demo application utilizing PaddleOCR's PP-OCRv5 model. Supports DEEPX NPU hardware acceleration.
@@ -52,6 +77,8 @@ cd PaddleOCR-deepx/deploy/fastapi
 ```
 
 **Note**: For detailed OCR server setup instructions, refer to [PaddleOCR FastAPI README](https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/README.md).
+
+**Note**: To use larger (higher accuracy) models, specify the `--use-server` option with `./local_setup.sh --use-server` or `./local_deepx_setup.sh --use-server` to use server-oriented (higher accuracy) models. (Caution: In low-spec edge environments, this may result in slower speeds or insufficient memory.)
 
 #### Verify Server is Running
 
@@ -319,11 +346,23 @@ demo.launch(
 **Symptom**: Server is slow or unresponsive
 
 **Solution**:
+
+When using `./local_setup.sh` with the --use-server option, server-oriented models are used.
+If speed is slow or memory shortage occurs in edge environments, specify the --use-mobile option or remove the --use-server option and run with default options to use mobile-oriented models.
+
 ```bash
 # Change OCR server to Mobile model (uses less memory)
 cd PaddleOCR-deepx/deploy/fastapi
-./local_setup.sh --use-mobile
+./local_setup.sh --use-mobile # default: --use-mobile on
 ./run.sh
+
+# Or, when using DEEPX NPU
+
+# Change OCR server to Mobile model (uses less memory)
+cd PaddleOCR-deepx/deploy/fastapi
+./local_deepx_setup.sh --use-mobile # default: --use-mobile on
+./run.sh
+
 ```
 
 ## 📚 Additional Resources
@@ -334,7 +373,7 @@ cd PaddleOCR-deepx/deploy/fastapi
 - **DEEPX NPU Guide**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/docs/DEEPX_NPU_GUIDE.md
 - **Gradio Official Documentation**: https://gradio.app/docs
 
-## �� License
+## 📄 License
 
 Apache License 2.0
 
@@ -343,25 +382,3 @@ Apache License 2.0
 - PaddlePaddle Team: PP-OCRv5 model development
 - DEEPX: NPU hardware acceleration support
 - Gradio Team: Web UI framework
-
-
----
-title: PP-OCRv5 Online Demo
-emoji: 🌍
-colorFrom: purple
-colorTo: green
-sdk: gradio
-sdk_version: 5.30.0
-app_file: app.py
-pinned: false
-license: apache-2.0
-short_description: Universal-Scene Text Recognition Model with High-Accuracy
-tags:
-  - ocr
-  - paddleocr
-  - computer-vision
-  - image-to-text
-  - gradio
----
-
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference

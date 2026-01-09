@@ -1,3 +1,28 @@
+---
+title: PP-OCRv5 Online Demo
+emoji: 🌍
+colorFrom: purple
+colorTo: green
+sdk: gradio
+sdk_version: 5.30.0
+app_file: app.py
+pinned: false
+license: apache-2.0
+short_description: Universal-Scene Text Recognition Model with High-Accuracy
+tags:
+  - ocr
+  - paddleocr
+  - computer-vision
+  - image-to-text
+  - gradio
+  - DEEPX
+  - NPU
+---
+
+본 프로젝트는  [https://huggingface.co/docs/hub/spaces-config-reference](https://huggingface.co/docs/hub/spaces-config-reference)를 베이스로 DEEPX DX-M1 NPU SDK를 통합하여 재구성하였습니다.
+
+---
+
 # PP-OCRv5 Online Demo - DEEPX Edition
 
 PaddleOCR의 PP-OCRv5 모델을 활용한 웹 기반 OCR 데모 애플리케이션입니다. DEEPX NPU 하드웨어 가속을 지원합니다.
@@ -52,6 +77,8 @@ cd PaddleOCR-deepx/deploy/fastapi
 ```
 
 **참고**: 자세한 OCR 서버 설정 방법은 [PaddleOCR FastAPI README](https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/README.md)를 참조하세요.
+
+**참고**: 보다 대용량(정확도가 높은) 모델을 사용하려면 `./local_setup.sh --use-server` 또는 `./local_deepx_setup.sh --use-server`와 같이 `--use-server` 옵션을 지정하여, 대용량(정확도가 높은) 모델을 사용합니다. (주의: 저사양 edge 환경에서는 속도가 느리거나 메모리가 부족할 수 있음.)
 
 #### 서버 실행 확인
 
@@ -319,11 +346,23 @@ demo.launch(
 **증상**: 서버가 느리거나 응답 없음
 
 **해결 방법**:
+
+`./local_setup.sh` 시 --use-server 옵션을 지정한 경우 server향 모델이 사용됩니다.
+edge 환경에서 속도가 느리거나 메모리 부족 현상이 발생될 경우 --use-mobile 옵션을 지정하거나 --use-server 옵션을 제거하고 기본 옵션으로 실행하면 mobile향 모델이 사용됩니다.
+
 ```bash
 # OCR 서버를 Mobile 모델로 변경 (더 적은 메모리 사용)
 cd PaddleOCR-deepx/deploy/fastapi
-./local_setup.sh --use-mobile
+./local_setup.sh --use-mobile # default: --use-mobile on
 ./run.sh
+
+# 또는, DEEPX NPU 사용시
+
+# OCR 서버를 Mobile 모델로 변경 (더 적은 메모리 사용)
+cd PaddleOCR-deepx/deploy/fastapi
+./local_deepx_setup.sh --use-mobile # default: --use-mobile on
+./run.sh
+
 ```
 
 ## 📚 추가 리소스
@@ -343,24 +382,3 @@ Apache License 2.0
 - PaddlePaddle Team: PP-OCRv5 모델 개발
 - DEEPX: NPU 하드웨어 가속 지원
 - Gradio Team: 웹 UI 프레임워크
-
----
-title: PP-OCRv5 Online Demo
-emoji: 🌍
-colorFrom: purple
-colorTo: green
-sdk: gradio
-sdk_version: 5.30.0
-app_file: app.py
-pinned: false
-license: apache-2.0
-short_description: Universal-Scene Text Recognition Model with High-Accuracy
-tags:
-  - ocr
-  - paddleocr
-  - computer-vision
-  - image-to-text
-  - gradio
----
-
-Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
