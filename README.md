@@ -46,6 +46,7 @@ This project is a Gradio-based web demo using PaddleOCR's latest PP-OCRv5 model.
 - **Support for Various Text Types**: Simplified/Traditional Chinese, Pinyin annotation, English, Japanese
 - **Complex Text Recognition**: Handwriting, vertical text, rare character recognition
 - **DEEPX NPU Support**: High-speed processing through hardware acceleration
+- **Performance Metrics**: Real-time OCR pipeline timing analysis (NPU: per-stage, CPU: total time)
 - **Responsive UI**: Sidebar toggle, full-screen results view
 
 ## 🔧 Prerequisites
@@ -230,9 +231,26 @@ http://localhost:7860
 
 - **Visualization Results**: Images with text boxes displayed
 - **JSON Output**: Structured OCR results (coordinates, text, confidence)
+- **Performance Metrics**: Detailed timing analysis for OCR processing
 - **Download Full Results**: Download all results as ZIP file
 
-### 5. UI Optimization
+### 5. Performance Metrics
+
+Real-time performance analysis with the following information:
+
+- **Summary Cards**: Total time, OCR inference time, pages processed, backend info
+- **Time Breakdown**: Visual progress bars showing PDF conversion, OCR inference, result formatting time ratios
+- **OCR Pipeline Stages** (NPU only): Detailed timing for each OCR stage
+  - Document Orientation Classification
+  - Document Unwarping
+  - Text Detection
+  - Textline Orientation Classification
+  - Text Recognition
+- **Per-Page Statistics**: Average processing time per page
+
+> **Note**: Per-stage timing is only available when using NPU backend. CPU backend shows total OCR time only.
+
+### 6. UI Optimization
 
 - **Sidebar Toggle**: Full-screen results view with hide/show left menu button
 - **Responsive Layout**: Automatically adjusts to screen size

@@ -443,7 +443,8 @@ span[data-testid="block-info"] {
 #text_det_unclip_ratio_nb,
 #text_rec_score_thresh_nb,
 #text_det_limit_side_len_nb,
-#text_det_limit_type_rd {
+#text_det_limit_type_rd,
+#enable_perf_metrics_cb {
     padding: 8px 0 !important;
     background: transparent !important;
     border: none !important;
@@ -461,7 +462,8 @@ span[data-testid="block-info"] {
 #text_det_unclip_ratio_nb:hover,
 #text_rec_score_thresh_nb:hover,
 #text_det_limit_side_len_nb:hover,
-#text_det_limit_type_rd:hover {
+#text_det_limit_type_rd:hover,
+#enable_perf_metrics_cb:hover {
     border-color: transparent !important;
     box-shadow: none !important;
 }
@@ -531,7 +533,8 @@ span[data-testid="block-info"] {
 /* ===== Toggle Switch Style (Module Tab) ===== */
 #use_doc_orientation_classify_cb > label,
 #use_doc_unwarping_cb > label,
-#use_textline_orientation_cb > label {
+#use_textline_orientation_cb > label,
+#enable_perf_metrics_cb > label {
     display: flex !important;
     flex-direction: row-reverse !important;
     align-items: center !important;
@@ -545,7 +548,8 @@ span[data-testid="block-info"] {
 
 #use_doc_orientation_classify_cb input[type="checkbox"],
 #use_doc_unwarping_cb input[type="checkbox"],
-#use_textline_orientation_cb input[type="checkbox"] {
+#use_textline_orientation_cb input[type="checkbox"],
+#enable_perf_metrics_cb input[type="checkbox"] {
     width: 36px !important;
     height: 20px !important;
     appearance: none !important;
@@ -561,7 +565,8 @@ span[data-testid="block-info"] {
 
 #use_doc_orientation_classify_cb input[type="checkbox"]::before,
 #use_doc_unwarping_cb input[type="checkbox"]::before,
-#use_textline_orientation_cb input[type="checkbox"]::before {
+#use_textline_orientation_cb input[type="checkbox"]::before,
+#enable_perf_metrics_cb input[type="checkbox"]::before {
     content: '' !important;
     position: absolute !important;
     width: 16px !important;
@@ -576,13 +581,15 @@ span[data-testid="block-info"] {
 
 #use_doc_orientation_classify_cb input[type="checkbox"]:checked,
 #use_doc_unwarping_cb input[type="checkbox"]:checked,
-#use_textline_orientation_cb input[type="checkbox"]:checked {
+#use_textline_orientation_cb input[type="checkbox"]:checked,
+#enable_perf_metrics_cb input[type="checkbox"]:checked {
     background: var(--primary-color) !important;
 }
 
 #use_doc_orientation_classify_cb input[type="checkbox"]:checked::before,
 #use_doc_unwarping_cb input[type="checkbox"]:checked::before,
-#use_textline_orientation_cb input[type="checkbox"]:checked::before {
+#use_textline_orientation_cb input[type="checkbox"]:checked::before,
+#enable_perf_metrics_cb input[type="checkbox"]:checked::before {
     left: 18px !important;
 }
 
@@ -916,6 +923,7 @@ def process_file(
     text_det_box_thresh,
     text_det_unclip_ratio,
     text_rec_score_thresh,
+    enable_perf_metrics=True,
 ):
     """Process uploaded file with API"""
     try:
@@ -949,6 +957,7 @@ def process_file(
                 "fileType": 0 if file_type == "pdf" else 1,
                 "visualize": True,  # Enable visualization to get images
                 "deepx": enable_deepx_npu,
+                "inflight": enable_perf_metrics,  # Enable performance metrics
                 "useDocOrientationClassify": use_doc_orientation_classify,
                 "useDocUnwarping": use_doc_unwarping,
                 "useTextlineOrientation": use_textline_orientation,
@@ -990,6 +999,7 @@ def process_file(
             "output_json": output_json,
             "input_images": input_images,
             "api_response": result,
+            "performance_metrics": output_json.get("performanceMetrics"),
         }
 
     except requests.exceptions.RequestException as e:
@@ -1218,7 +1228,7 @@ def hide_spinner(results):
 
 def update_display(results):
     if not results:
-        return [gr.skip()] * (MAX_NUM_PAGES + 1 + len(gallery_list))
+        return [gr.skip()] * (MAX_NUM_PAGES + 1 + len(gallery_list) + 1)  # +1 for perf_metrics_html
     
     # Validate results
     assert len(results["overall_ocr_res_images"]) <= MAX_NUM_PAGES, len(
@@ -1253,7 +1263,275 @@ def update_display(results):
             )
         )
     
-    return ocr_imgs + output_json + gallery_list_imgs
+    # Prepare performance metrics HTML
+    perf_metrics = results.get("performance_metrics")
+    if perf_metrics:
+        perf_html = format_performance_metrics_html(perf_metrics)
+    else:
+        perf_html = "<div style='padding: 20px; text-align: center; color: #888;'>Performance metrics not available. Enable 'Performance Metrics' option to see timing information.</div>"
+    
+    perf_metrics_output = [gr.HTML(value=perf_html)]
+    
+    return ocr_imgs + output_json + gallery_list_imgs + perf_metrics_output
+
+
+def format_performance_metrics_html(metrics):
+    """Format performance metrics as HTML for display"""
+    if not metrics:
+        return "<div style='padding: 20px; text-align: center; color: #888;'>No performance metrics available.</div>"
+    
+    breakdown = metrics.get("breakdown", {})
+    per_page = metrics.get("perPage", {})
+    ocr_stages = metrics.get("ocrStages", {})
+    
+    # Build HTML
+    html = """
+    <div style="padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+        <h3 style="color: #2932E1; margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 24px;">📊</span> Performance Metrics
+        </h3>
+        
+        <!-- Summary Cards -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;">
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Total Time</div>
+                <div style="font-size: 28px; font-weight: 700;">{total_time:.2f}s</div>
+                <div style="font-size: 12px; opacity: 0.8;">{total_time_ms:.0f} ms</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(17, 153, 142, 0.4);">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">OCR Inference</div>
+                <div style="font-size: 28px; font-weight: 700;">{ocr_time:.2f}s</div>
+                <div style="font-size: 12px; opacity: 0.8;">{ocr_pct:.1f}% of total</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(235, 51, 73, 0.4);">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Pages Processed</div>
+                <div style="font-size: 28px; font-weight: 700;">{page_count}</div>
+                <div style="font-size: 12px; opacity: 0.8;">{per_page_time:.2f}s per page</div>
+            </div>
+            <div style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);">
+                <div style="font-size: 14px; opacity: 0.9; margin-bottom: 4px;">Backend</div>
+                <div style="font-size: 28px; font-weight: 700;">{backend}</div>
+                <div style="font-size: 12px; opacity: 0.8;">{mode} mode</div>
+            </div>
+        </div>
+        
+        <!-- Detailed Breakdown -->
+        <div style="background: white; border: 1px solid #e8edf6; border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+            <h4 style="color: #140E35; margin-bottom: 16px;">Time Breakdown</h4>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+    """
+    
+    total_time = metrics.get("totalTimeSec", 0)
+    ocr_time = breakdown.get("ocrInferenceSec", 0)
+    formatting_time = breakdown.get("formattingSec", 0)
+    pdf_time = breakdown.get("pdfConversionSec", 0) or 0
+    
+    # Calculate percentages
+    ocr_pct = (ocr_time / total_time * 100) if total_time > 0 else 0
+    formatting_pct = (formatting_time / total_time * 100) if total_time > 0 else 0
+    pdf_pct = (pdf_time / total_time * 100) if total_time > 0 else 0
+    
+    # Add PDF conversion if present
+    if pdf_time > 0:
+        html += f"""
+                <div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="color: #565772;">PDF Conversion</span>
+                        <span style="font-weight: 600; color: #140E35;">{pdf_time:.3f}s ({pdf_pct:.1f}%)</span>
+                    </div>
+                    <div style="background: #e8edf6; border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, #f5af19, #f12711); height: 100%; width: {pdf_pct}%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+        """
+    
+    html += f"""
+                <div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="color: #565772;">OCR Inference</span>
+                        <span style="font-weight: 600; color: #140E35;">{ocr_time:.3f}s ({ocr_pct:.1f}%)</span>
+                    </div>
+                    <div style="background: #e8edf6; border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, #11998e, #38ef7d); height: 100%; width: {ocr_pct}%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                <div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="color: #565772;">Result Formatting</span>
+                        <span style="font-weight: 600; color: #140E35;">{formatting_time:.3f}s ({formatting_pct:.1f}%)</span>
+                    </div>
+                    <div style="background: #e8edf6; border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, #667eea, #764ba2); height: 100%; width: {formatting_pct}%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    """
+    
+    # OCR Stages Breakdown (new section)
+    doc_ori_ms = ocr_stages.get("docOrientationMs")
+    doc_uv_ms = ocr_stages.get("docUnwarpingMs")
+    det_ms = ocr_stages.get("detectionMs", 0)
+    cls_ms = ocr_stages.get("textlineOrientationMs")
+    rec_ms = ocr_stages.get("recognitionMs", 0)
+    
+    # Check if backend is CPU
+    backend = metrics.get("backend", "CPU")
+    is_cpu = backend == "CPU"
+    
+    # Calculate total OCR stages time for percentage
+    total_stages_ms = (doc_ori_ms or 0) + (doc_uv_ms or 0) + det_ms + (cls_ms or 0) + rec_ms
+    
+    # Show CPU notice or stages breakdown
+    if is_cpu:
+        html += """
+        <!-- CPU Notice for OCR Stages -->
+        <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+            <h4 style="color: #92400e; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 18px;">ℹ️</span> OCR Pipeline Stages
+            </h4>
+            <p style="color: #78350f; margin: 0; font-size: 14px; line-height: 1.6;">
+            <strong>Note:</strong> CPU backend doesn't support per-stage timing for OCR inference. Only total time is provided.
+            <br><span style="opacity: 0.8;">Use NPU backend to see detailed timing for each stage.</span>
+            </p>
+        </div>
+        """
+    elif total_stages_ms > 0:
+        html += f"""
+        <!-- OCR Stages Breakdown -->
+        <div style="background: white; border: 1px solid #e8edf6; border-radius: 12px; padding: 20px; margin-bottom: 16px;">
+            <h4 style="color: #140E35; margin-bottom: 16px;">🔬 OCR Pipeline Stages</h4>
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+        """
+        
+        # Define stages with colors
+        stages = [
+            ("Doc Orientation", doc_ori_ms, "#f093fb", "#f5576c"),
+            ("Doc Unwarping", doc_uv_ms, "#4facfe", "#00f2fe"),
+            ("Text Detection", det_ms, "#43e97b", "#38f9d7"),
+            ("Textline Orientation", cls_ms, "#fa709a", "#fee140"),
+            ("Text Recognition", rec_ms, "#a18cd1", "#fbc2eb"),
+        ]
+        
+        for stage_name, stage_ms, color1, color2 in stages:
+            if stage_ms is not None and stage_ms > 0:
+                stage_pct = (stage_ms / total_stages_ms * 100) if total_stages_ms > 0 else 0
+                html += f"""
+                <div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+                        <span style="color: #565772;">{stage_name}</span>
+                        <span style="font-weight: 600; color: #140E35;">{stage_ms:.1f}ms ({stage_pct:.1f}%)</span>
+                    </div>
+                    <div style="background: #e8edf6; border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: linear-gradient(90deg, {color1}, {color2}); height: 100%; width: {stage_pct}%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+                """
+        
+        html += """
+            </div>
+        </div>
+        """
+    
+    # Per-page stats
+    per_page_ocr = per_page.get("ocrInferenceSec", 0)
+    per_page_format = per_page.get("formattingSec", 0)
+    per_page_doc_ori = per_page.get("docOrientationMs")
+    per_page_doc_uv = per_page.get("docUnwarpingMs")
+    per_page_det = per_page.get("detectionMs")
+    per_page_cls = per_page.get("textlineOrientationMs")
+    per_page_rec = per_page.get("recognitionMs")
+    
+    html += f"""
+        <!-- Per-Page Stats -->
+        <div style="background: white; border: 1px solid #e8edf6; border-radius: 12px; padding: 20px;">
+            <h4 style="color: #140E35; margin-bottom: 16px;">Per-Page Statistics</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px;">
+                <div style="text-align: center; padding: 12px; background: #f8f9fb; border-radius: 8px;">
+                    <div style="font-size: 20px; font-weight: 700; color: #2932E1;">{per_page_ocr:.3f}s</div>
+                    <div style="font-size: 12px; color: #565772;">OCR Total</div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: #f8f9fb; border-radius: 8px;">
+                    <div style="font-size: 20px; font-weight: 700; color: #2932E1;">{per_page_format:.3f}s</div>
+                    <div style="font-size: 12px; color: #565772;">Formatting</div>
+                </div>
+    """
+    
+    # Add per-page OCR stage stats if available (only for NPU, CPU returns 0)
+    # CPU doesn't support per-stage timing, so we hide these when backend is CPU
+    if not is_cpu:
+        if per_page_doc_ori is not None and per_page_doc_ori > 0:
+            html += f"""
+                <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #fff5f5, #fff); border-radius: 8px; border: 1px solid #ffe0e0;">
+                    <div style="font-size: 20px; font-weight: 700; color: #f5576c;">{per_page_doc_ori:.1f}ms</div>
+                    <div style="font-size: 12px; color: #565772;">Doc Orient.</div>
+                </div>
+            """
+        
+        if per_page_doc_uv is not None and per_page_doc_uv > 0:
+            html += f"""
+                <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #f0f9ff, #fff); border-radius: 8px; border: 1px solid #bae6fd;">
+                    <div style="font-size: 20px; font-weight: 700; color: #0284c7;">{per_page_doc_uv:.1f}ms</div>
+                    <div style="font-size: 12px; color: #565772;">Unwarping</div>
+                </div>
+            """
+        
+        if per_page_det is not None and per_page_det > 0:
+            html += f"""
+                <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #f0fdf4, #fff); border-radius: 8px; border: 1px solid #bbf7d0;">
+                    <div style="font-size: 20px; font-weight: 700; color: #16a34a;">{per_page_det:.1f}ms</div>
+                    <div style="font-size: 12px; color: #565772;">Detection</div>
+                </div>
+            """
+        
+        if per_page_cls is not None and per_page_cls > 0:
+            html += f"""
+                <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #fffbeb, #fff); border-radius: 8px; border: 1px solid #fde68a;">
+                    <div style="font-size: 20px; font-weight: 700; color: #d97706;">{per_page_cls:.1f}ms</div>
+                    <div style="font-size: 12px; color: #565772;">Textline Ori.</div>
+                </div>
+            """
+        
+        if per_page_rec is not None and per_page_rec > 0:
+            html += f"""
+                <div style="text-align: center; padding: 12px; background: linear-gradient(135deg, #faf5ff, #fff); border-radius: 8px; border: 1px solid #e9d5ff;">
+                    <div style="font-size: 20px; font-weight: 700; color: #9333ea;">{per_page_rec:.1f}ms</div>
+                    <div style="font-size: 12px; color: #565772;">Recognition</div>
+                </div>
+            """
+    
+    # Add PDF-specific info if available
+    pdf_dpi = metrics.get("pdfDpi")
+    pdf_threads = metrics.get("pdfThreadCount")
+    if pdf_dpi:
+        html += f"""
+                <div style="text-align: center; padding: 12px; background: #f8f9fb; border-radius: 8px;">
+                    <div style="font-size: 20px; font-weight: 700; color: #2932E1;">{pdf_dpi}</div>
+                    <div style="font-size: 12px; color: #565772;">PDF DPI</div>
+                </div>
+                <div style="text-align: center; padding: 12px; background: #f8f9fb; border-radius: 8px;">
+                    <div style="font-size: 20px; font-weight: 700; color: #2932E1;">{pdf_threads}</div>
+                    <div style="font-size: 12px; color: #565772;">PDF Threads</div>
+                </div>
+        """
+    
+    html += """
+            </div>
+        </div>
+    </div>
+    """
+    
+    # Format the HTML with values
+    return html.format(
+        total_time=total_time,
+        total_time_ms=metrics.get("totalTimeMs", 0),
+        ocr_time=ocr_time,
+        ocr_pct=ocr_pct,
+        page_count=metrics.get("pageCount", 1),
+        per_page_time=per_page_ocr,
+        backend=metrics.get("backend", "N/A"),
+        mode=metrics.get("mode", "N/A"),
+    )
 
 
 def update_image(evt: gr.SelectData):
@@ -1328,17 +1606,17 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
     
     with gr.Row():
         with gr.Column(scale=3, elem_classes=["sidebar-column"], elem_id="sidebar-column"):
+
             # Inference device section
-            gr.Markdown("#### ⚡ Inference Device")
+            gr.Markdown("#### ⚡ Inference Device")    
             with gr.Column(elem_classes=["white-container"]):
-                
                 inference_device = gr.Radio(
                     choices=[("DEEPX NPU", True), ("CPU", False)],
                     value=True,
                     show_label=False,
                     elem_id="inference_device",
             )
-
+        
             # Upload section
             gr.Markdown("#### 📁 Input File")
             with gr.Column(elem_classes=["white-container"]):
@@ -1513,7 +1791,19 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
 
         # Results display section
         with gr.Column(scale=7, elem_classes=["white-container"], elem_id="results-column"):
+            
+            # Performance Metrics section
+            # gr.Markdown("#### 📊 Performance Metrics")
             gr.Markdown("### 📋 Results", elem_classes="custom-markdown")
+            
+            with gr.Column(elem_classes=["white-container"]):
+                enable_perf_metrics_cb = gr.Checkbox(
+                    label="📊 Enable Performance Metrics",
+                    value=True,
+                    show_label=False,
+                    # info="Show detailed timing information (inflight mode)",
+                    elem_id="enable_perf_metrics_cb",
+                )
 
             loading_spinner = gr.Column(
                 visible=False, elem_classes=["loader-container"]
@@ -1560,7 +1850,6 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
                     """
                 )
 
-            download_file = gr.File(visible=False, label="Download File")
             overall_ocr_res_images = []
             output_json_list = []
             gallery_list = []
@@ -1586,6 +1875,11 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
                                         visible=False,
                                     )
                                 )
+                with gr.Tab("Performance"):
+                    perf_metrics_html = gr.HTML(
+                        value="<div style='padding: 20px; text-align: center; color: #888;'>Enable 'Performance Metrics' option and run analysis to see timing information.</div>",
+                        visible=True,
+                    )
                 with gr.Tab("JSON"):
                     with gr.Row():
                         with gr.Column(scale=2, min_width=1):
@@ -1627,6 +1921,8 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
                 variant="primary",
                 visible=False,
             )
+
+            download_file = gr.File(visible=False, label="Download File")
 
             gr.Markdown("")
 
@@ -1727,6 +2023,7 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
             text_det_box_thresh_nb,
             text_det_unclip_ratio_nb,
             text_rec_score_thresh_nb,
+            enable_perf_metrics_cb,
         ],
         outputs=[results_state],
     ).then(
@@ -1734,7 +2031,7 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
     ).then(
         update_display,
         inputs=[results_state],
-        outputs=overall_ocr_res_images + output_json_list + gallery_list,
+        outputs=overall_ocr_res_images + output_json_list + gallery_list + [perf_metrics_html],
     ).then(
         lambda results: gr.update(visible=True) if results else gr.skip(),
         inputs=[results_state],
