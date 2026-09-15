@@ -1,6 +1,7 @@
 import atexit
 import base64
 import io
+from html import escape as html_escape
 import json
 import os
 import tempfile
@@ -910,6 +911,79 @@ def bytes_to_image(image_bytes):
     return Image.open(io.BytesIO(image_bytes))
 
 
+def describe_api_failure(exc=None, response=None):
+    """Turn a failed OCR API call into something the user can act on.
+
+    The FastAPI backend answers a request it cannot serve with a 503 whose
+    `detail` names the missing piece and the command that supplies it -
+    "Device 'npu' is not available on this deployment. Available: cpu. Run
+    ./run.sh --sanity-check to see why." That sentence is the only part of
+    the failure worth reading, and it used to be discarded: the caller
+    replaced the HTTPError (which carries the response) with a bare
+    RuntimeError, so the user got "API request failed" and nothing else.
+    """
+    if response is None:
+        return {
+            "status": None,
+            "reason": type(exc).__name__ if exc is not None else "RequestException",
+            "message": str(exc) if exc is not None else "The OCR server could not be reached.",
+            "hint": (f"Is an OCR server listening at {API_URL}? Start one with "
+                     f"./run.sh --ocr-version v6 --model-size medium, or set "
+                     f"API_URL to point at the one you have."),
+        }
+
+    status = getattr(response, "status_code", None)
+    reason = getattr(response, "reason", "") or ""
+    body = (getattr(response, "text", "") or "").strip()
+
+    message = ""
+    try:
+        payload = response.json()
+        if isinstance(payload, dict):
+            # FastAPI uses `detail`; this service's own errors use `errorMsg`.
+            message = payload.get("detail") or payload.get("errorMsg") or payload.get("error") or ""
+            if message and not isinstance(message, str):
+                message = json.dumps(message, ensure_ascii=False)
+    except Exception:
+        pass
+    if not message:
+        message = body or f"HTTP {status} {reason}".strip()
+
+    hint = None
+    if status == 503:
+        hint = ("The server is running but cannot serve the request as asked - "
+                "usually the selected device is not installed. Pick another "
+                "Inference Device, or set the server up for this one.")
+    return {"status": status, "reason": reason, "message": message, "hint": hint}
+
+
+def api_failure_result(file_path, file_type, error):
+    """A results payload that carries a failure instead of pages.
+
+    Returned rather than raised. Gradio's `.then()` runs whether or not the
+    previous step succeeded, and every step after this one reads
+    `results_state`; raising leaves that state at its previous value, so a
+    failed run either showed nothing at all or - worse, on the second run -
+    sat next to the previous file's pages with only a toast to say so.
+    """
+    try:
+        gr.Warning(error["message"])
+    except Exception:
+        # Outside a live gradio request (tests, scripts) there is no client
+        # to toast at, and that must not turn into a second failure.
+        pass
+    return {
+        "original_file": file_path,
+        "file_type": file_type,
+        "overall_ocr_res_images": [],
+        "output_json": {},
+        "input_images": [],
+        "api_response": {},
+        "performance_metrics": None,
+        "error": error,
+    }
+
+
 def process_file(
     file_path,
     image_input,
@@ -974,7 +1048,9 @@ def process_file(
         try:
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
-            raise RuntimeError("API request failed") from e
+            return api_failure_result(
+                file_path, file_type,
+                describe_api_failure(exc=e, response=response))
         # Parse API response
         result = response.json()
         layout_results = result.get("result", {}).get("ocrResults", [])
@@ -1003,7 +1079,10 @@ def process_file(
         }
 
     except requests.exceptions.RequestException as e:
-        raise gr.Error(f"API request failed: {str(e)}")
+        # No response at all: wrong host/port, or nothing listening.
+        return api_failure_result(
+            file_path, file_type,
+            describe_api_failure(exc=e, response=getattr(e, "response", None)))
     except Exception as e:
         raise gr.Error(f"Error processing file: {str(e)}")
 
@@ -1226,10 +1305,64 @@ def hide_spinner(results):
         return gr.Column(visible=False), gr.skip()
 
 
+def format_api_error_html(error):
+    """The failure, rendered where the results would have been."""
+    status = error.get("status")
+    status_line = f"HTTP {status}" if status else "No response"
+    reason = error.get("reason") or ""
+    if reason and status:
+        status_line = f"{status_line} {reason}"
+    hint = error.get("hint")
+    hint_html = ""
+    if hint:
+        hint_html = f"""
+        <div style="margin-top: 14px; padding: 12px 16px; background: #FFF7E6;
+                    border-left: 3px solid #FAAD14; border-radius: 6px;
+                    color: #8C6D1F; font-size: 13px; line-height: 1.6;">
+            <b style="color: #D48806;">What to try:</b> {html_escape(hint)}
+        </div>"""
+    return f"""
+    <div style="padding: 20px; font-family: -apple-system, BlinkMacSystemFont,
+                'Segoe UI', Roboto, sans-serif;">
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 14px;">
+            <span style="font-size: 22px;">&#9888;&#65039;</span>
+            <h3 style="margin: 0; color: #CF1322;">OCR request failed</h3>
+            <span style="margin-left: auto; padding: 3px 10px; border-radius: 12px;
+                         background: #FFF1F0; border: 1px solid #FFA39E;
+                         color: #CF1322; font-size: 12px; font-weight: 600;">
+                {html_escape(status_line)}</span>
+        </div>
+        <div style="padding: 14px 16px; background: #FFF1F0; border-left: 3px solid #FF4D4F;
+                    border-radius: 6px; color: #820014; font-size: 14px; line-height: 1.6;
+                    white-space: pre-wrap; word-break: break-word;">{html_escape(error.get("message", ""))}</div>
+        {hint_html}
+        <div style="margin-top: 12px; color: #8C8C8C; font-size: 12px;">
+            Server: {html_escape(API_URL)}
+        </div>
+    </div>
+    """
+
+
 def update_display(results):
+    # +2 trailing outputs: perf_metrics_html and error_panel.
+    OUTPUT_COUNT = MAX_NUM_PAGES + 1 + len(gallery_list) + 2
+
     if not results:
-        return [gr.skip()] * (MAX_NUM_PAGES + 1 + len(gallery_list) + 1)  # +1 for perf_metrics_html
-    
+        return [gr.skip()] * OUTPUT_COUNT
+
+    error = results.get("error")
+    if error:
+        # Blank every page: a failed run must not leave the previous run's
+        # results on screen with only a toast to contradict them.
+        panel = format_api_error_html(error)
+        return (
+            [gr.Image(value=None, visible=False) for _ in range(MAX_NUM_PAGES)]
+            + [gr.JSON(value={"error": error, "server": API_URL}, visible=True)]
+            + [gr.Gallery(value=[], rows=1) for _ in gallery_list]
+            + [gr.HTML(value=panel)]
+            + [gr.HTML(value=panel, visible=True)]
+        )
+
     # Validate results
     assert len(results["overall_ocr_res_images"]) <= MAX_NUM_PAGES, len(
         results["overall_ocr_res_images"]
@@ -1272,7 +1405,9 @@ def update_display(results):
     
     perf_metrics_output = [gr.HTML(value=perf_html)]
     
-    return ocr_imgs + output_json + gallery_list_imgs + perf_metrics_output
+    # The error panel stays hidden on a successful run.
+    return (ocr_imgs + output_json + gallery_list_imgs + perf_metrics_output
+            + [gr.HTML(visible=False)])
 
 
 def format_performance_metrics_html(metrics):
@@ -1853,6 +1988,10 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
             overall_ocr_res_images = []
             output_json_list = []
             gallery_list = []
+            # Failures land here, above the tabs, so the reason is visible
+            # without hunting for a tab. A toast alone disappears.
+            error_panel = gr.HTML(visible=False, elem_id="error-panel")
+
             with gr.Tabs(visible=False) as tabs:
                 with gr.Tab("OCR"):
                     with gr.Row():
@@ -2031,9 +2170,11 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
     ).then(
         update_display,
         inputs=[results_state],
-        outputs=overall_ocr_res_images + output_json_list + gallery_list + [perf_metrics_html],
+        outputs=overall_ocr_res_images + output_json_list + gallery_list
+                + [perf_metrics_html, error_panel],
     ).then(
-        lambda results: gr.update(visible=True) if results else gr.skip(),
+        lambda results: gr.update(visible=True)
+                        if results and not results.get("error") else gr.update(visible=False),
         inputs=[results_state],
         outputs=download_all_btn,
     )
