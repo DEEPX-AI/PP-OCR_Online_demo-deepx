@@ -39,7 +39,13 @@ A web-based OCR demo application utilizing PaddleOCR's PP-OCRv5 model. Supports 
 
 ## 🌟 Introduction
 
-This project is a Gradio-based web demo using PaddleOCR's latest PP-OCRv5 model. It provides text recognition functionality for images and PDF files through a user-friendly UI.
+This project is a Gradio-based web demo for PaddleOCR's PP-OCRv5 model. It provides text recognition functionality for images and PDF files through a user-friendly UI.
+
+The demo does not run OCR itself - it is a thin client for the PaddleOCR-deepx
+FastAPI server, which is where the DX-M1 NPU acceleration lives. Which OCR
+pipeline you get is therefore decided when you start that server: point the
+demo at a server running PP-OCRv6 and it renders PP-OCRv6 results, unchanged.
+See [Which branch to check out](#which-branch-to-check-out).
 
 ### Key Features
 
@@ -47,6 +53,7 @@ This project is a Gradio-based web demo using PaddleOCR's latest PP-OCRv5 model.
 - **Complex Text Recognition**: Handwriting, vertical text, rare character recognition
 - **DEEPX NPU Support**: High-speed processing through hardware acceleration
 - **Performance Metrics**: Real-time OCR pipeline timing analysis (NPU: per-stage, CPU: total time)
+- **Works with PP-OCRv5 and PP-OCRv6**: Both are served by the same backend branch
 - **Responsive UI**: Sidebar toggle, full-screen results view
 
 ## 🔧 Prerequisites
@@ -60,9 +67,11 @@ This web demo operates by communicating with a backend OCR server. You must firs
 The OCR server uses the FastAPI server from the [PaddleOCR-deepx](https://github.com/DEEPX-AI/PaddleOCR-deepx) repository.
 
 ```bash
-# 1. Clone PaddleOCR-deepx repository
+# 1. Clone PaddleOCR-deepx and check out a branch explicitly
 git clone https://github.com/DEEPX-AI/PaddleOCR-deepx.git
-cd PaddleOCR-deepx/deploy/fastapi
+cd PaddleOCR-deepx
+git checkout deepx-v6          # serves both PP-OCRv5 and PP-OCRv6
+cd deploy/fastapi
 
 # 2. Environment setup (CPU version)
 ./local_setup.sh
@@ -73,13 +82,61 @@ cd PaddleOCR-deepx/deploy/fastapi
 # Or DEEPX NPU version (Hardware acceleration)
 ./local_deepx_setup.sh --dx_rt /path/to/dx_rt
 
-# 3. Start server (default port: 8080)
-./run.sh
+# 3. Start server (default port: 8080) - the model must be named
+./run.sh --ocr-version v6 --model-size medium
 ```
 
-**Note**: For detailed OCR server setup instructions, refer to [PaddleOCR FastAPI README](https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/README.md).
+#### Which branch to check out
 
-**Note**: To use larger (higher accuracy) models, specify the `--use-server` option with `./local_setup.sh --use-server` or `./local_deepx_setup.sh --use-server` to use server-oriented (higher accuracy) models. (Caution: In low-spec edge environments, this may result in slower speeds or insufficient memory.)
+The repository's default branch is `deepx`, so cloning without a `git checkout`
+leaves you on it. Check out a branch by name instead of relying on that default.
+
+| Branch | Serves | Use it when |
+|---|---|---|
+| **`deepx-v6`** (recommended) | PP-OCRv5 **and** PP-OCRv6 | Always, unless you need to reproduce an older result |
+| `deepx-v5` | PP-OCRv5 only | Pinning to the v5-era server; same commit as `deepx` |
+
+This demo works against `deepx-v6` with either pipeline selected - the request
+and response contract is unchanged between the two branches, and `deepx-v6`
+only adds fields to it. Verified for every model combination:
+
+| Server started with | NPU (image) | CPU (image) | NPU (PDF) |
+|---|---|---|---|
+| `--ocr-version v5 --model-size server` | 1.94s | 11.95s | 0.98s |
+| `--ocr-version v5 --model-size mobile` | 0.94s | 3.75s | 0.59s |
+| `--ocr-version v6 --model-size medium` | 1.51s | 9.84s | 0.86s |
+| `--ocr-version v6 --model-size small` | 0.96s | 4.00s | 0.62s |
+| `--ocr-version v6 --model-size tiny` | 0.81s | 1.78s | 0.54s |
+
+(One page, `visualize=true`, `inflight=true`, DX-M1 NPU. Times include base64
+transport and visualization, so they are end-to-end demo latency, not raw
+inference.)
+
+#### Choosing the model
+
+`--ocr-version` and `--model-size` are both required, and they name a
+deployment target rather than a file:
+
+```bash
+./run.sh --ocr-version v6 --model-size medium   # v6: medium | small | tiny
+./run.sh --ocr-version v5 --model-size server   # v5: server | mobile
+```
+
+Omit both and `run.sh` asks interactively; a non-interactive shell (Docker,
+CI) gets an error rather than a silent default, so a deployment never serves a
+model nobody chose. These options replace the `--use-server` / `--use-mobile`
+flags that used to be passed to the setup scripts.
+
+The two versions name different things. v5's `server` / `mobile` are deployment
+targets; v6's `medium` / `small` / `tiny` are model scales. Their one-letter
+abbreviations collide - v6's `s` is *small*, not *server*, and its `m` is
+*medium*, not *mobile* - which is why these options take the full word.
+
+**Note**: For detailed OCR server setup instructions, refer to [PaddleOCR FastAPI README](https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx-v6/deploy/fastapi/README.md).
+
+**Note**: `local_deepx_setup.sh` downloads every DX-M1 NPU model set at once
+(v5 server, v5 mobile, and v6). The CPU-side PP-OCRv6 weights are not
+pre-fetched; PaddleOCR downloads them on the first request that needs them.
 
 #### Verify Server is Running
 
@@ -216,6 +273,11 @@ http://localhost:7860
 - **DEEPX NPU**: Hardware acceleration (high-speed processing)
 - **CPU**: CPU-based processing
 
+The choice is sent with each request, so switching devices needs no server
+restart. It selects the device the backend actually runs on - a server with an
+NPU present still honours a CPU request, which is what makes the two columns of
+the Performance tab comparable.
+
 #### Module Selection
 - **Document Orientation Correction**: Automatically correct rotated images
 - **Document Distortion Correction**: Flatten crumpled documents
@@ -305,7 +367,7 @@ curl http://localhost:8080/health
 
 # If server is not running
 cd PaddleOCR-deepx/deploy/fastapi
-./run.sh
+./run.sh --ocr-version v6 --model-size medium
 
 # If using a different port
 export API_URL="http://localhost:9000/api/v1/ocr"
@@ -365,30 +427,56 @@ demo.launch(
 
 **Solution**:
 
-When using `./local_setup.sh` with the --use-server option, server-oriented models are used.
-If speed is slow or memory shortage occurs in edge environments, specify the --use-mobile option or remove the --use-server option and run with default options to use mobile-oriented models.
+Restart the server with a smaller model. The size is chosen at startup by
+`--model-size`, so no re-run of the setup scripts is needed - the setup
+scripts' old `--use-server` / `--use-mobile` flags no longer decide this.
 
 ```bash
-# Change OCR server to Mobile model (uses less memory)
 cd PaddleOCR-deepx/deploy/fastapi
-./local_setup.sh --use-mobile # default: --use-mobile on
-./run.sh
 
-# Or, when using DEEPX NPU
+# PP-OCRv6, smallest and fastest
+./run.sh --ocr-version v6 --model-size tiny
 
-# Change OCR server to Mobile model (uses less memory)
-cd PaddleOCR-deepx/deploy/fastapi
-./local_deepx_setup.sh --use-mobile # default: --use-mobile on
-./run.sh
+# PP-OCRv6, a middle step
+./run.sh --ocr-version v6 --model-size small
 
+# PP-OCRv5, the lighter of its two targets
+./run.sh --ocr-version v5 --model-size mobile
 ```
+
+On the NPU, a smaller model also loads fewer inference engines, which is
+usually what resolves an out-of-memory failure at startup.
+
+### 6. OCR Server Fails to Download Models
+
+**Symptom**: The OCR server aborts at startup with
+`FATAL ERROR: Failed to load CPU models: No available model hosting platforms
+detected. Please check your network connection.`
+
+**Cause**: PaddleOCR fetches CPU weights from HuggingFace / AI Studio / BOS on
+first use. Behind a corporate proxy that re-signs TLS, every one of those hosts
+fails certificate verification and PaddleOCR reports it as "no platforms
+available" rather than as a TLS error.
+
+**Solution**: point Python's HTTP stack at the system trust store and start the
+server again.
+
+```bash
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+cd PaddleOCR-deepx/deploy/fastapi
+./run.sh --ocr-version v6 --model-size medium
+```
+
+The models are cached under `~/.paddlex/official_models`, so this is needed
+only until each model has been fetched once. DX-M1 NPU models are unaffected -
+`local_deepx_setup.sh` downloads those separately.
 
 ## 📚 Additional Resources
 
 - **PaddleOCR Official Documentation**: https://github.com/PaddlePaddle/PaddleOCR
 - **PaddleOCR-deepx (DEEPX NPU Version)**: https://github.com/DEEPX-AI/PaddleOCR-deepx
-- **OCR Server Setup Guide**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/README.md
-- **DEEPX NPU Guide**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/docs/DEEPX_NPU_GUIDE.md
+- **OCR Server Setup Guide**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx-v6/deploy/fastapi/README.md
+- **DEEPX NPU Guide**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx-v6/deploy/fastapi/docs/DEEPX_NPU_GUIDE.md
 - **Gradio Official Documentation**: https://gradio.app/docs
 
 ## 📄 License

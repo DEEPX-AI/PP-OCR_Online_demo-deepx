@@ -39,7 +39,13 @@ PaddleOCR의 PP-OCRv5 모델을 활용한 웹 기반 OCR 데모 애플리케이�
 
 ## 🌟 소개
 
-이 프로젝트는 PaddleOCR의 최신 PP-OCRv5 모델을 사용하는 Gradio 기반 웹 데모입니다. 사용자 친화적인 UI를 통해 이미지 및 PDF 파일의 텍스트 인식 기능을 제공합니다.
+이 프로젝트는 PaddleOCR의 PP-OCRv5 모델을 위한 Gradio 기반 웹 데모입니다. 사용자 친화적인 UI를 통해 이미지 및 PDF 파일의 텍스트 인식 기능을 제공합니다.
+
+이 데모는 OCR을 직접 수행하지 않습니다. PaddleOCR-deepx FastAPI 서버의 얇은
+클라이언트이며, DX-M1 NPU 가속은 전적으로 그 서버가 담당합니다. 따라서 어떤
+OCR pipeline이 동작할지는 서버를 기동할 때 결정됩니다. PP-OCRv6로 기동한
+서버를 가리키면 데모는 코드 변경 없이 PP-OCRv6 결과를 그대로 렌더링합니다.
+[어떤 브랜치를 checkout할 것인가](#어떤-브랜치를-checkout할-것인가)를 참고하세요.
 
 ### 주요 특징
 
@@ -47,6 +53,7 @@ PaddleOCR의 PP-OCRv5 모델을 활용한 웹 기반 OCR 데모 애플리케이�
 - **복잡한 텍스트 인식**: 필기체, 세로쓰기, 희귀 문자 인식
 - **DEEPX NPU 지원**: 하드웨어 가속을 통한 고속 처리
 - **성능 메트릭**: 실시간 OCR 파이프라인 타이밍 분석 (NPU: 단계별, CPU: 전체 시간)
+- **PP-OCRv5 / PP-OCRv6 모두 지원**: 동일한 backend 브랜치가 둘 다 서비스
 - **반응형 UI**: 사이드바 토글, 전체 화면 결과 보기
 
 ## 🔧 사전 요구사항
@@ -60,9 +67,11 @@ PaddleOCR의 PP-OCRv5 모델을 활용한 웹 기반 OCR 데모 애플리케이�
 OCR 서버는 [PaddleOCR-deepx](https://github.com/DEEPX-AI/PaddleOCR-deepx) 레포지토리의 FastAPI 서버를 사용합니다.
 
 ```bash
-# 1. PaddleOCR-deepx 레포지토리 클론
+# 1. PaddleOCR-deepx 클론 후 브랜치를 명시적으로 checkout
 git clone https://github.com/DEEPX-AI/PaddleOCR-deepx.git
-cd PaddleOCR-deepx/deploy/fastapi
+cd PaddleOCR-deepx
+git checkout deepx-v6          # PP-OCRv5와 PP-OCRv6를 모두 서비스
+cd deploy/fastapi
 
 # 2. 환경 설정 (CPU 버전)
 ./local_setup.sh
@@ -73,13 +82,60 @@ cd PaddleOCR-deepx/deploy/fastapi
 # 또는 DEEPX NPU 버전 (하드웨어 가속)
 ./local_deepx_setup.sh --dx_rt /path/to/dx_rt
 
-# 3. 서버 실행 (기본 포트: 8080)
-./run.sh
+# 3. 서버 실행 (기본 포트: 8080) - 모델을 반드시 지정
+./run.sh --ocr-version v6 --model-size medium
 ```
 
-**참고**: 자세한 OCR 서버 설정 방법은 [PaddleOCR FastAPI README](https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/README.md)를 참조하세요.
+#### 어떤 브랜치를 checkout할 것인가
 
-**참고**: 보다 대용량(정확도가 높은) 모델을 사용하려면 `./local_setup.sh --use-server` 또는 `./local_deepx_setup.sh --use-server`와 같이 `--use-server` 옵션을 지정하여, 대용량(정확도가 높은) 모델을 사용합니다. (주의: 저사양 edge 환경에서는 속도가 느리거나 메모리가 부족할 수 있음.)
+레포지토리의 default 브랜치가 `deepx`이므로, `git checkout` 없이 클론하면
+그 브랜치에 머무릅니다. default에 의존하지 말고 브랜치를 이름으로 지정하세요.
+
+| 브랜치 | 서비스 범위 | 선택 기준 |
+|---|---|---|
+| **`deepx-v6`** (권장) | PP-OCRv5 **및** PP-OCRv6 | 과거 결과를 재현할 목적이 아니라면 항상 |
+| `deepx-v5` | PP-OCRv5 전용 | v5 시점 서버에 고정할 때. `deepx`와 동일 커밋 |
+
+이 데모는 `deepx-v6`에서 어느 pipeline을 선택하든 동작합니다. 두 브랜치 사이에
+request/response 계약이 바뀌지 않았고, `deepx-v6`는 필드를 추가만 했기
+때문입니다. 모든 모델 조합에서 검증했습니다.
+
+| 서버 기동 옵션 | NPU (이미지) | CPU (이미지) | NPU (PDF) |
+|---|---|---|---|
+| `--ocr-version v5 --model-size server` | 1.94s | 11.95s | 0.98s |
+| `--ocr-version v5 --model-size mobile` | 0.94s | 3.75s | 0.59s |
+| `--ocr-version v6 --model-size medium` | 1.51s | 9.84s | 0.86s |
+| `--ocr-version v6 --model-size small` | 0.96s | 4.00s | 0.62s |
+| `--ocr-version v6 --model-size tiny` | 0.81s | 1.78s | 0.54s |
+
+(1 page, `visualize=true`, `inflight=true`, DX-M1 NPU. base64 전송과 시각화
+시간이 포함된 end-to-end 데모 지연이며, 순수 inference 시간이 아닙니다.)
+
+#### 모델 선택
+
+`--ocr-version`과 `--model-size`는 둘 다 필수이며, 파일명이 아니라 배포 대상을
+가리킵니다.
+
+```bash
+./run.sh --ocr-version v6 --model-size medium   # v6: medium | small | tiny
+./run.sh --ocr-version v5 --model-size server   # v5: server | mobile
+```
+
+둘 다 생략하면 `run.sh`가 대화형으로 물어봅니다. 비대화형 shell(Docker, CI)
+에서는 조용히 기본값으로 뜨지 않고 에러를 냅니다. 아무도 선택하지 않은 모델이
+서비스되는 일을 막기 위해서입니다. 이 옵션들이 과거 setup script에 주던
+`--use-server` / `--use-mobile`을 대체합니다.
+
+두 버전의 이름은 서로 다른 것을 가리킵니다. v5의 `server` / `mobile`은 배포
+대상이고, v6의 `medium` / `small` / `tiny`는 모델 규모입니다. 한 글자 축약형이
+겹치는데 - v6의 `s`는 *small*이지 *server*가 아니고, `m`은 *medium*이지
+*mobile*이 아닙니다 - 이 옵션이 전체 단어를 받는 이유가 그것입니다.
+
+**참고**: 자세한 OCR 서버 설정 방법은 [PaddleOCR FastAPI README](https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx-v6/deploy/fastapi/README.md)를 참조하세요.
+
+**참고**: `local_deepx_setup.sh`는 DX-M1 NPU 모델 세트를 한 번에 모두
+받습니다(v5 server, v5 mobile, v6). CPU용 PP-OCRv6 가중치는 미리 받지 않으며,
+해당 모델이 처음 필요해지는 요청에서 PaddleOCR이 자동으로 다운로드합니다.
 
 #### 서버 실행 확인
 
@@ -216,6 +272,10 @@ http://localhost:7860
 - **DEEPX NPU**: 하드웨어 가속 (고속 처리)
 - **CPU**: CPU 기반 처리
 
+이 선택은 요청마다 전달되므로 장치를 바꿀 때 서버를 재시작할 필요가 없습니다.
+backend가 실제로 사용할 장치를 지정하며, NPU가 장착된 서버라도 CPU 요청은 CPU로
+처리합니다. 성능 탭의 두 값을 비교할 수 있는 이유가 이것입니다.
+
 #### 모듈 선택
 - **문서 방향 보정**: 회전된 이미지 자동 보정
 - **문서 왜곡 보정**: 구겨진 문서 펼치기
@@ -305,7 +365,7 @@ curl http://localhost:8080/health
 
 # 서버가 실행 중이 아닌 경우
 cd PaddleOCR-deepx/deploy/fastapi
-./run.sh
+./run.sh --ocr-version v6 --model-size medium
 
 # 다른 포트를 사용하는 경우
 export API_URL="http://localhost:9000/api/v1/ocr"
@@ -365,30 +425,56 @@ demo.launch(
 
 **해결 방법**:
 
-`./local_setup.sh` 시 --use-server 옵션을 지정한 경우 server향 모델이 사용됩니다.
-edge 환경에서 속도가 느리거나 메모리 부족 현상이 발생될 경우 --use-mobile 옵션을 지정하거나 --use-server 옵션을 제거하고 기본 옵션으로 실행하면 mobile향 모델이 사용됩니다.
+더 작은 모델로 서버를 재시작하세요. 모델 크기는 기동 시 `--model-size`로
+결정되므로 setup script를 다시 실행할 필요가 없습니다. 과거 setup script의
+`--use-server` / `--use-mobile` 플래그는 더 이상 이것을 결정하지 않습니다.
 
 ```bash
-# OCR 서버를 Mobile 모델로 변경 (더 적은 메모리 사용)
 cd PaddleOCR-deepx/deploy/fastapi
-./local_setup.sh --use-mobile # default: --use-mobile on
-./run.sh
 
-# 또는, DEEPX NPU 사용시
+# PP-OCRv6, 가장 작고 빠름
+./run.sh --ocr-version v6 --model-size tiny
 
-# OCR 서버를 Mobile 모델로 변경 (더 적은 메모리 사용)
-cd PaddleOCR-deepx/deploy/fastapi
-./local_deepx_setup.sh --use-mobile # default: --use-mobile on
-./run.sh
+# PP-OCRv6, 중간 단계
+./run.sh --ocr-version v6 --model-size small
 
+# PP-OCRv5, 두 대상 중 가벼운 쪽
+./run.sh --ocr-version v5 --model-size mobile
 ```
+
+NPU에서는 더 작은 모델이 inference engine을 더 적게 로드하므로, 기동 시
+메모리 부족 실패는 대개 이것으로 해소됩니다.
+
+### 6. OCR 서버가 모델 다운로드에 실패
+
+**증상**: OCR 서버가 기동 중 다음 메시지로 중단됩니다.
+`FATAL ERROR: Failed to load CPU models: No available model hosting platforms
+detected. Please check your network connection.`
+
+**원인**: PaddleOCR은 CPU 가중치를 최초 사용 시 HuggingFace / AI Studio / BOS
+에서 받아옵니다. TLS를 재서명하는 사내 proxy 환경에서는 이 호스트들이 모두
+인증서 검증에 실패하는데, PaddleOCR은 이를 TLS 오류가 아니라 "사용 가능한
+플랫폼 없음"으로 보고합니다.
+
+**해결 방법**: Python의 HTTP stack이 시스템 신뢰 저장소를 보도록 지정한 뒤
+서버를 다시 기동합니다.
+
+```bash
+export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+cd PaddleOCR-deepx/deploy/fastapi
+./run.sh --ocr-version v6 --model-size medium
+```
+
+모델은 `~/.paddlex/official_models` 아래에 캐시되므로, 각 모델을 한 번 받고
+나면 더 이상 필요하지 않습니다. DX-M1 NPU 모델은 이 문제와 무관합니다.
+`local_deepx_setup.sh`가 별도로 받습니다.
 
 ## 📚 추가 리소스
 
 - **PaddleOCR 공식 문서**: https://github.com/PaddlePaddle/PaddleOCR
 - **PaddleOCR-deepx (DEEPX NPU 버전)**: https://github.com/DEEPX-AI/PaddleOCR-deepx
-- **OCR 서버 설정 가이드**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/README.md
-- **DEEPX NPU 가이드**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx/deploy/fastapi/docs/DEEPX_NPU_GUIDE.md
+- **OCR 서버 설정 가이드**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx-v6/deploy/fastapi/README.md
+- **DEEPX NPU 가이드**: https://github.com/DEEPX-AI/PaddleOCR-deepx/blob/deepx-v6/deploy/fastapi/docs/DEEPX_NPU_GUIDE.md
 - **Gradio 공식 문서**: https://gradio.app/docs
 
 ## 📄 라이선스
