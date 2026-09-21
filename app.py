@@ -1694,7 +1694,7 @@ def delete_file_periodically():
         time.sleep(THREAD_WAKEUP_TIME)
 
 BANNER_PATH = str(BASE_DIR / "res" / "img" / "deepx-baidu-pp-banner.png")
-BANNER_CES_PATH = str(BASE_DIR / "res" / "img" / "DEEPX-Banner-CES-2026-01.png")
+BANNER_DEMO_PATH = str(BASE_DIR / "res" / "img" / "DEEPX-Banner-PP-OCR-Demo.png")
 
 # 브라우저의 언어 설정을 'en-US'로 속이는 스크립트
 FORCE_EN_SCRIPT = """
@@ -2066,7 +2066,7 @@ with gr.Blocks(css=CSS, title=TITLE, theme=paddle_theme, head=FORCE_EN_SCRIPT) a
             gr.Markdown("")
 
             gr.Image(
-                value=BANNER_CES_PATH,
+                value=BANNER_DEMO_PATH,
                 show_label=False,
                 show_download_button=False,
                 show_fullscreen_button=False,
